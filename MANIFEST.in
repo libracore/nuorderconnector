@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include nuorderconnector *.css
+recursive-include nuorderconnector *.csv
+recursive-include nuorderconnector *.html
+recursive-include nuorderconnector *.ico
+recursive-include nuorderconnector *.js
+recursive-include nuorderconnector *.json
+recursive-include nuorderconnector *.md
+recursive-include nuorderconnector *.png
+recursive-include nuorderconnector *.py
+recursive-include nuorderconnector *.svg
+recursive-include nuorderconnector *.txt
+recursive-exclude nuorderconnector *.pyc
