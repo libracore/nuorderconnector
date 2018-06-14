@@ -7,4 +7,9 @@ import frappe
 from frappe.model.document import Document
 
 class nuOrderSettings(Document):
+    @frappe.whitelist()
+    def test(self):
+        frappe.msgprint("Test!")
+        pass
+        
 	pass
