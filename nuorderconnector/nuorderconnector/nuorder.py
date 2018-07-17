@@ -28,90 +28,95 @@ class nuOrder():
         print("Test")
         return
     
+    def get_oauth(self):
+        return OAuth1(self.consumer_key, self.consumer_secret, self.token, self.token_secret)
+    
+    def get_headers(self):
+        return {'content-type': 'application/json'}
+                          
     # execute a get request
     def execute_get(self, endpoint, payload=None):
         data = json.dumps(payload).encode()
-        print("Data: {0}".format(data))
-
-        auth = OAuth1(self.consumer_key, self.consumer_secret,
-                      self.token = token, self.token_secret)
-        headers = {'content-type': 'application/json'}
-        r = requests.put(url, auth=auth, data=json.dumps(payload), headers=headers)
-
-        print("Response: {0}".format(r.json()))
+        r = requests.put(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
         return r.json
 
     # execute a put request
     def execute_put(self, endpoint, payload=None):
         data = json.dumps(payload).encode()
-        print("Data: {0}".format(data))
-
-        auth = OAuth1(self.consumer_key, self.consumer_secret,
-                      self.token = token, self.token_secret)
-        headers = {'content-type': 'application/json'}
         url = self.host + endpoint
-        r = requests.put(url, auth=auth, data=json.dumps(payload), headers=headers)
-
-        print("Response: {0}".format(r.json()))
+        r = requests.put(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
         return r.json
-        
-    def create_product(self, item):
+
+    # execute a post request
+    def execute_post(self, endpoint, payload=None):
+        data = json.dumps(payload).encode()
+        url = self.host + endpoint
+        r = requests.post(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
+        return r.json
+                
+    """ create or update a product
+          self
+          item: ERPNext item object
+          color: color of the item
+          sizes: list of dicts as [{ "size": "L", "upc": "12345"}, { "size": "L", "upc": "12345"}]
+          prices: dict of dicts as {"CHF": {"wholesale": 10, "retail": 20, "disabled": False }, "EUR": {"wholesale": 10, "retail": 20, "disabled": False}}
+    """
+    def update_product(self, item, color, sizes, prices):
         payload = {
           "style_number": item.item_code,
-          "season": "spring/summer",
-          "color": "all black",
+          "season": item.season,
+          "color": color,
           "name": item.item_name,
           "external_id": item.item_code,
-          "category": item.item_group,
-          "brand_id": "{0}".format(item.item_code),
-          "unique_key": item.item_code,
-          "sizes": [
-            {
-              "size": "OS",
-              "size_group": "A1",
-              "pricing": {
-                "USD": {
-                  "wholesale": 10,
-                  "retail": 12.1,
-                  "disabled": False
-                }
-              }
-            }
-          ],
-          "size_groups": [
-            "[ group1, group2, group3 ]"
-          ],
-          "available_now": False,
-          "images": [
-            "[599611906873730001745011]"
-          ],
+          "category": item.category,
+          "brand_id": item.item_code,
+          "sizes": sizes,
+          "available_now": not item.disabled,
           "cancelled": False,
-          "archived": False,
-          "active": True,
-          "description": "awesome product",
-          "available_from": "2017/08/30",
-          "available_until": "2019/08/30",
-          "order_closing": "2017-09-12 00:00:00.000Z",
-          "pricing": {
-            "USD": {
-              "wholesale": 10,
-              "retail": 12.1,
-              "disabled": False
-            }
-          },
-          "seasons": [
-            "[spring, summer, 2018]"
-          ]
+          "archived": item.disabled,
+          "active": not item.disabled,
+          "description": item.description,
+          "available_from": item.available_start,
+          "available_until": item.available_end,
+          "order_closing": item.order_closing,
+          "pricing": prices
         }
-        self.execute_put("/api/product/new", payload)
+        self.execute_put("/api/product/new/force", payload)
         return
         
-    def create_company(self):
+    """
+    Create or update company records
+      self
+      company: ERPNext customer object
+    """
+    def update_company(self, company):
         payload = {
-          "name": name,
+          "name": company.name,
           "code": hashlib.md5(name).hexdigest()
         }
-        self.execute_put("/api/company/new", payload)    
+        self.execute_put("/api/company/new/force", payload)    
+        return
+    
+    """
+    Pull orders from nuOrder into ERPNext
+    """    
+    def get_orders(self):
+        # get list of pending orders
+        order_ids = execute_get("/api/orders/{status}/list".format(status="pending"))
+        if order_ids:
+            for order_id in order_ids:
+                # read order information
+                order = execute_get("/api/order/{id}".format(id=order_id))
+                if order:
+                    # create order in ERPNext
+                    # TODO MAP ORDER STRUCTURE
+                    new_order = frappe.get_doc({"doctype": "Sales Order"})
+                    new_order.comment = comment
+                    new_order.insert()
+                    frappe.db.commit()
+                    
+                    # update status in nuOrder
+                    execute_post("/api/order/{id}/{status}".format(id=order_id,status="processed"))
         return
 
 def test():
