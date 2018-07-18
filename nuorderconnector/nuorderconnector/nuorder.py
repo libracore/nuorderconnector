@@ -109,9 +109,17 @@ class nuOrder():
                 order = execute_get("/api/order/{id}".format(id=order_id))
                 if order:
                     # create order in ERPNext
-                    # TODO MAP ORDER STRUCTURE
+                    customer = order['retailer']['retailer_name']
+                    items = []
+                    for line_item in order['line_items']:
+                        for size in line_item['sizes']:
+                            barcode = size['upc']
+                            matches = frappe.get_all('Item', filters={'barcode': barcode}, fields=['name'])
+                            if matches:
+                                items.append({'item_code': matches[0]['name'], 'qty': size['quantity'], 'rate': size['price']})
                     new_order = frappe.get_doc({"doctype": "Sales Order"})
-                    new_order.comment = comment
+                    new_order.customer = customer
+                    new_order.items = items
                     new_order.insert()
                     frappe.db.commit()
                     
