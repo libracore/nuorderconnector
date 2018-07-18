@@ -127,7 +127,118 @@ class nuOrder():
                     execute_post("/api/order/{id}/{status}".format(id=order_id,status="processed"))
         return
 
+    # checks all items and pushes them to nuOrder
+    def process_items_to_nuorder(self):
+        # process all single items
+        items = self.get_single_items()
+        for item in items:
+            self.update_erp_item(item_code=item, color='None', sizes=[{'size': '-', 'upc': item.barcode}])
+        # process variants
+        templates = self.get_template_items()
+        for template in templates:
+            # get all colors of this template
+            colors = self.get_colors(template)
+            for color in colors:
+                # get all size items for this color
+                items = self.get_items_by_color(template_item_code, color)
+                if items:
+                    sizes = []
+                    for item in items:
+                        barcode = frappe.get_value('Item', item, 'barcode')
+                        size_code = self.get_size_code(item)
+                        if size_code and barcode:
+                            sizes.append({'size': size_code, 'upc': item.barcode})
+                    # add record
+                    self.update_erp_item(
+                        item_code=items[0], 
+                        color=color, 
+                        sizes=sizes
+                    )
+        return
+        
+    def update_erp_item(self, item_code, color, sizes):
+        item = frappe.get_doc("Item", i)
+        prices = frappe.get_all("Item Price", filters={'item_code': item_code, 'selling': 1}, fields=['currency', 'price_list_rate'])
+        if prices:            
+            self.update_product(
+                item=item, 
+                color=color, 
+                sizes=sizes, 
+                prices={
+                    {
+                        prices[0]['currency']: {
+                            "wholesale": prices[0]['price_list_rate'], 
+                            "retail": item.retail_rate, 
+                            "disabled": False 
+                        }
+                    }
+            )  
+        else:
+            #skipped, no prices found
+            pass
+        return
+        
+    def get_single_items(self):
+        sql_query = """SELECT `name` 
+                       FROM `tabItem`
+                       WHERE 
+                          `has_variants` = 0 
+                          AND `variant_of` IS NULL
+                          AND `disabled` = 0
+                          AND `is_sales_item` = 1
+                          AND `publish_on_nuorder = 1"""
+        items = frappe.db.sql(sql_query, as_list=True)
+        return items
+        
+    def get_template_items(self):
+        sql_query = """SELECT `name` 
+                       FROM `tabItem`
+                       WHERE 
+                          `has_variants` = 1 
+                          AND `variant_of` IS NULL
+                          AND `disabled` = 0
+                          AND `is_sales_item` = 1
+                          AND `publish_on_nuorder = 1"""
+        items = frappe.db.sql(sql_query, as_list=True)
+        return items
+            
+    def get_colors(self, template_item_code):
+        sql_query = """SELECT `attribute_value` 
+                       FROM `tabItem Variant Attribute`
+                       WHERE 
+                          `parenttype` = 'Item' 
+                          AND (`parent` IN (SELECT `name` FROM `tabItem` WHERE `variant_of` = '{template}'))
+                        AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')""".format(template=template_item_code)
+        colors = frappe.db.sql(sql_query, as_list=True)
+        return colors
+       
+    def get_items_by_color(self, template_item_code, color):
+        sql_query = """SELECT `parent` 
+                       FROM `tabItem Variant Attribute`
+                       WHERE 
+                           `parenttype` = 'Item' 
+                           AND (`parent` IN (SELECT `name` FROM `tabItem` WHERE `variant_of` = '{template.name}'))
+                           AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')
+                           AND `attribute_value` = '{color}'""".format(template=template_item_code, color=color)
+        items = frappe.db.sql(sql_query, as_list=True)
+        return items
+    
+    def get_size_code(self, item_code):
+        sql_query = """SELECT `attribute_value` 
+                       FROM `tabItem Variant Attribute`
+                       WHERE 
+                           `parenttype` = 'Item' 
+                           AND `parent` = '{item_code}'
+                           AND `attribute` LIKE '%size%'
+                        LIMIT 1""".format(item_code=item_code)
+        sizes = frappe.db.sql(sql_query, as_list=True)
+        if sizes:
+            return sizes[0]
+        else:
+            return None                         
 def test():
     nu = nuOrder()
     nu.test()
+    
+
     
