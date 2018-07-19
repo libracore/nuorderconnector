@@ -5,6 +5,7 @@ import json
 import requests
 from requests_oauthlib import OAuth1
 import hashlib
+import frappe
 
 class nuOrder():
     # static class variables
@@ -37,23 +38,34 @@ class nuOrder():
     # execute a get request
     def execute_get(self, endpoint, payload=None):
         data = json.dumps(payload).encode()
-        r = requests.put(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
-        return r.json
+        url = self.host + endpoint
+        r = requests.get(url, auth=self.get_oauth(), data=json.dumps(payload), headers=self.get_headers())
+        return r.json()
 
     # execute a put request
     def execute_put(self, endpoint, payload=None):
         data = json.dumps(payload).encode()
         url = self.host + endpoint
-        r = requests.put(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
-        return r.json
+        r = requests.put(url, auth=self.get_oauth(), data=json.dumps(payload), headers=self.get_headers())
+        return r.json()
 
     # execute a post request
     def execute_post(self, endpoint, payload=None):
         data = json.dumps(payload).encode()
         url = self.host + endpoint
-        r = requests.post(url, auth=get_oauth(), data=json.dumps(payload), headers=get_headers())
-        return r.json
-                
+        r = requests.post(url, auth=self.get_oauth(), data=json.dumps(payload), headers=self.get_headers())
+        return r.json()
+    
+    # check the connection
+    def check_connection(self):
+        url = self.host + "/api/orders/{status}/list".format(status="pending")
+        r = requests.get(url, auth=self.get_oauth(), data=None, headers=self.get_headers())
+        if r.status_code == 200:
+            return True
+        else:
+            frappe.log_error("nuOrder connection failed: http error {0}\n{1}".format(r.status_code, r.json()))
+            return False
+        
     """ create or update a product
           self
           item: ERPNext item object
@@ -102,6 +114,7 @@ class nuOrder():
     Pull orders from nuOrder into ERPNext
     """    
     def get_orders(self):
+        count = 0
         # get list of pending orders
         order_ids = execute_get("/api/orders/{status}/list".format(status="pending"))
         if order_ids:
@@ -109,6 +122,7 @@ class nuOrder():
                 # read order information
                 order = execute_get("/api/order/{id}".format(id=order_id))
                 if order:
+                    count += 1
                     # create order in ERPNext
                     customer = order['retailer']['retailer_name']
                     items = []
@@ -126,39 +140,45 @@ class nuOrder():
                     
                     # update status in nuOrder
                     execute_post("/api/order/{id}/{status}".format(id=order_id,status="processed"))
-        return
+        return count
 
     # checks all items and pushes them to nuOrder
     def process_items_to_nuorder(self):
+        count = 0;
         # process all single items
         items = self.get_single_items()
-        for item in items:
-            self.update_erp_item(item_code=item, color='None', sizes=[{'size': '-', 'upc': item.barcode}])
+        if items:
+            for item in items:
+                barcode = frappe.get_value('Item', item, 'barcode')
+                count += 1
+                self.update_erp_item(item_code=item, color='None', sizes=[{'size': '-', 'upc': barcode}])
         # process variants
         templates = self.get_template_items()
-        for template in templates:
-            # get all colors of this template
-            colors = self.get_colors(template)
-            for color in colors:
-                # get all size items for this color
-                items = self.get_items_by_color(template_item_code, color)
-                if items:
-                    sizes = []
-                    for item in items:
-                        barcode = frappe.get_value('Item', item, 'barcode')
-                        size_code = self.get_size_code(item)
-                        if size_code and barcode:
-                            sizes.append({'size': size_code, 'upc': item.barcode})
-                    # add record
-                    self.update_erp_item(
-                        item_code=items[0], 
-                        color=color, 
-                        sizes=sizes
-                    )
-        return
+        if templates:
+            for template in templates:
+                # get all colors of this template
+                colors = self.get_colors(template)
+                for color in colors:
+                    # get all size items for this color
+                    items = self.get_items_by_color(template_item_code, color)
+                    if items:
+                        sizes = []
+                        for item in items:
+                            barcode = frappe.get_value('Item', item, 'barcode')
+                            size_code = self.get_size_code(item)
+                            if size_code and barcode:
+                                sizes.append({'size': size_code, 'upc': item.barcode})
+                        # add record
+                        count += 1
+                        self.update_erp_item(
+                            item_code=items[0], 
+                            color=color, 
+                            sizes=sizes
+                        )
+        return count
         
     def update_erp_item(self, item_code, color, sizes):
-        item = frappe.get_doc("Item", i)
+        item = frappe.get_doc("Item", item_code)
         prices = frappe.get_all("Item Price", filters={'item_code': item_code, 'selling': 1}, fields=['currency', 'price_list_rate'])
         if prices:            
             self.update_product(
@@ -188,9 +208,12 @@ class nuOrder():
                           AND `variant_of` IS NULL
                           AND `disabled` = 0
                           AND `is_sales_item` = 1
-                          AND `publish_on_nuorder = 1"""
+                          AND `publish_on_nuorder` = 1"""
         items = frappe.db.sql(sql_query, as_list=True)
-        return items
+        if items:
+            return items[0]
+        else:
+            return None
         
     def get_template_items(self):
         sql_query = """SELECT `name` 
@@ -200,9 +223,12 @@ class nuOrder():
                           AND `variant_of` IS NULL
                           AND `disabled` = 0
                           AND `is_sales_item` = 1
-                          AND `publish_on_nuorder = 1"""
+                          AND `publish_on_nuorder` = 1"""
         items = frappe.db.sql(sql_query, as_list=True)
-        return items
+        if items:
+            return items[0]
+        else:
+            return None
             
     def get_colors(self, template_item_code):
         sql_query = """SELECT `attribute_value` 
@@ -212,7 +238,10 @@ class nuOrder():
                           AND (`parent` IN (SELECT `name` FROM `tabItem` WHERE `variant_of` = '{template}'))
                         AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')""".format(template=template_item_code)
         colors = frappe.db.sql(sql_query, as_list=True)
-        return colors
+        if colors:
+            return colors[0]
+        else:
+            return None
        
     def get_items_by_color(self, template_item_code, color):
         sql_query = """SELECT `parent` 
@@ -223,7 +252,10 @@ class nuOrder():
                            AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')
                            AND `attribute_value` = '{color}'""".format(template=template_item_code, color=color)
         items = frappe.db.sql(sql_query, as_list=True)
-        return items
+        if items:
+            return items[0]
+        else:
+            return None
     
     def get_size_code(self, item_code):
         sql_query = """SELECT `attribute_value` 
@@ -235,14 +267,59 @@ class nuOrder():
                         LIMIT 1""".format(item_code=item_code)
         sizes = frappe.db.sql(sql_query, as_list=True)
         if sizes:
-            return sizes[0]
+            return sizes[0][0]
         else:
-            return None                         
-def test():
-    nu = nuOrder()
-    nu.test()
-    test.process_items_to_nuorder()
-    return
-    
+            return None        
 
+    def get_customers(self):
+        sql_query = """SELECT `name` 
+                       FROM `tabCustomer`
+                       WHERE 
+                           `disabled` = 0""".format(item_code=item_code)
+        customers = frappe.db.sql(sql_query, as_list=True)
+        return customers[0] 
+                
+    def log(self, title, description="", status="Information"):
+        new_log = frappe.get_doc({'doctype': 'nuOrder Log'}, ignore_patterns=True)
+        new_log.title = title
+        new_log.description = description
+        new_log.status = status
+        new_log.date = datetime.now()
+        new_log.insert()
+        frappe.db.commit()
+        return
+
+# synchronise
+@frappe.whitelist()
+def queue_sync():
+    log(title= _("Starting nuOrder sync"), 
+           description= ( _("Starting to sync nuOrder")),
+           status="Running")
+           
+    enqueue("nuorderconnector.nuorderconnector.nuorder.sync",
+        queue='long',
+        timeout=15000)
+    return
+
+def sync():
+    config = frappe.get_single("nuOrder Settings")
+    nu = nuOrder(config.host, config.consumer_key, config.consumer_secret, config.token, config.token_secret)
     
+    # push customers
+    customers = nu.get_customers()
+    for customer in customers:
+        nu.update_company(customer)
+    
+    # push products
+    product_count = nu.process_items_to_nuorder()
+    
+    # read orders
+    order_count = nu.get_orders()
+    
+    # success log
+    log(title= _("nuOrder sync complete"), 
+        description= ( _("Sync of {0} customers, {1} products and {2} orders completed.")).format(
+            len(customers), product_count, order_count), 
+        status="Completed")
+        
+    return

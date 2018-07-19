@@ -11,7 +11,13 @@ class nuOrderSettings(Document):
     @frappe.whitelist()
     def test(self):
         frappe.msgprint("Test!")
-        pass
+        nu = nuOrder(self.host, self.consumer_key, self.consumer_secret, self.token, self.token_secret)
+        count = nu.process_items_to_nuorder()
+        return count
+        
+    def check_connection(self):
+        nu = nuOrder(self.host, self.consumer_key, self.consumer_secret, self.token, self.token_secret)
+        return nu.check_connection()
         
 	pass
 
