@@ -1,5 +1,3 @@
 frappe
-json
 requests
 requests_oauthlib
-hashlib

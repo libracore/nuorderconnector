@@ -81,7 +81,8 @@ class nuOrder():
           "order_closing": item.order_closing,
           "pricing": prices
         }
-        self.execute_put("/api/product/new/force", payload)
+        #self.execute_put("/api/product/new/force", payload)
+        frappe.log_error("{0}".format(payload))
         return
         
     """
@@ -172,6 +173,7 @@ class nuOrder():
                             "disabled": False 
                         }
                     }
+                }
             )  
         else:
             #skipped, no prices found
@@ -239,6 +241,8 @@ class nuOrder():
 def test():
     nu = nuOrder()
     nu.test()
+    test.process_items_to_nuorder()
+    return
     
 
     
