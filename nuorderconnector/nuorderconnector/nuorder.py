@@ -6,6 +6,7 @@ import requests
 from requests_oauthlib import OAuth1
 import hashlib
 import frappe
+from datetime import datetime
 
 class nuOrder():
     # static class variables
@@ -93,6 +94,7 @@ class nuOrder():
           "order_closing": item.order_closing,
           "pricing": prices
         }
+        frappe.msgprint("{0}".format(payload))
         #self.execute_put("/api/product/new/force", payload)
         frappe.log_error("{0}".format(payload))
         return
@@ -149,30 +151,30 @@ class nuOrder():
         items = self.get_single_items()
         if items:
             for item in items:
-                barcode = frappe.get_value('Item', item, 'barcode')
+                barcode = frappe.get_value('Item', item[0], 'barcode')
                 count += 1
-                self.update_erp_item(item_code=item, color='None', sizes=[{'size': '-', 'upc': barcode}])
+                self.update_erp_item(item_code=item[0], color='None', sizes=[{'size': '-', 'upc': barcode}])
         # process variants
         templates = self.get_template_items()
         if templates:
             for template in templates:
                 # get all colors of this template
-                colors = self.get_colors(template)
+                colors = self.get_colors(template[0])
                 for color in colors:
                     # get all size items for this color
-                    items = self.get_items_by_color(template_item_code, color)
+                    items = self.get_items_by_color(template[0], color[0])
                     if items:
                         sizes = []
                         for item in items:
-                            barcode = frappe.get_value('Item', item, 'barcode')
-                            size_code = self.get_size_code(item)
+                            barcode = frappe.get_value('Item', item[0], 'barcode')
+                            size_code = self.get_size_code(item[0])
                             if size_code and barcode:
-                                sizes.append({'size': size_code, 'upc': item.barcode})
+                                sizes.append({'size': size_code[0], 'upc': barcode})
                         # add record
                         count += 1
                         self.update_erp_item(
-                            item_code=items[0], 
-                            color=color, 
+                            item_code=items[0][0], 
+                            color=color[0], 
                             sizes=sizes
                         )
         return count
@@ -186,18 +188,16 @@ class nuOrder():
                 color=color, 
                 sizes=sizes, 
                 prices={
-                    {
-                        prices[0]['currency']: {
-                            "wholesale": prices[0]['price_list_rate'], 
-                            "retail": item.retail_rate, 
-                            "disabled": False 
-                        }
+                    "{0}".format(prices[0]['currency']): {
+                        "wholesale": prices[0]['price_list_rate'], 
+                        "retail": item.retail_rate, 
+                        "disabled": 0 
                     }
                 }
             )  
         else:
             #skipped, no prices found
-            pass
+            log("Price missng", "Item {0} is missing a price record and was not uploaded.".format(item_code), "Error")
         return
         
     def get_single_items(self):
@@ -211,7 +211,7 @@ class nuOrder():
                           AND `publish_on_nuorder` = 1"""
         items = frappe.db.sql(sql_query, as_list=True)
         if items:
-            return items[0]
+            return items
         else:
             return None
         
@@ -226,12 +226,12 @@ class nuOrder():
                           AND `publish_on_nuorder` = 1"""
         items = frappe.db.sql(sql_query, as_list=True)
         if items:
-            return items[0]
+            return items
         else:
             return None
             
     def get_colors(self, template_item_code):
-        sql_query = """SELECT `attribute_value` 
+        sql_query = """SELECT DISTINCT(`attribute_value`) 
                        FROM `tabItem Variant Attribute`
                        WHERE 
                           `parenttype` = 'Item' 
@@ -239,7 +239,7 @@ class nuOrder():
                         AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')""".format(template=template_item_code)
         colors = frappe.db.sql(sql_query, as_list=True)
         if colors:
-            return colors[0]
+            return colors
         else:
             return None
        
@@ -248,12 +248,12 @@ class nuOrder():
                        FROM `tabItem Variant Attribute`
                        WHERE 
                            `parenttype` = 'Item' 
-                           AND (`parent` IN (SELECT `name` FROM `tabItem` WHERE `variant_of` = '{template.name}'))
+                           AND (`parent` IN (SELECT `name` FROM `tabItem` WHERE `variant_of` = '{template}'))
                            AND (`attribute` LIKE '%colour%' OR `attribute` LIKE '%color%')
                            AND `attribute_value` = '{color}'""".format(template=template_item_code, color=color)
         items = frappe.db.sql(sql_query, as_list=True)
         if items:
-            return items[0]
+            return items
         else:
             return None
     
@@ -267,7 +267,7 @@ class nuOrder():
                         LIMIT 1""".format(item_code=item_code)
         sizes = frappe.db.sql(sql_query, as_list=True)
         if sizes:
-            return sizes[0][0]
+            return sizes[0]
         else:
             return None        
 
@@ -277,17 +277,8 @@ class nuOrder():
                        WHERE 
                            `disabled` = 0""".format(item_code=item_code)
         customers = frappe.db.sql(sql_query, as_list=True)
-        return customers[0] 
-                
-    def log(self, title, description="", status="Information"):
-        new_log = frappe.get_doc({'doctype': 'nuOrder Log'}, ignore_patterns=True)
-        new_log.title = title
-        new_log.description = description
-        new_log.status = status
-        new_log.date = datetime.now()
-        new_log.insert()
-        frappe.db.commit()
-        return
+        return customers
+
 
 # synchronise
 @frappe.whitelist()
@@ -322,4 +313,14 @@ def sync():
             len(customers), product_count, order_count), 
         status="Completed")
         
+    return
+
+def log(title, description="", status="Information"):
+    new_log = frappe.get_doc({'doctype': 'nuOrder Log'}, ignore_patterns=True)
+    new_log.title = title
+    new_log.description = description
+    new_log.status = status
+    new_log.date = datetime.now()
+    new_log.insert()
+    frappe.db.commit()
     return
