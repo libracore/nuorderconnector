@@ -10,7 +10,7 @@ from nuorderconnector.nuorderconnector.nuorder import nuOrder
 class nuOrderSettings(Document):
     @frappe.whitelist()
     def test(self):
-        frappe.msgprint("Test!")
+        frappe.msgprint("Observe the console, error log and the nuOrder log for output")
         nu = nuOrder(self.host, self.consumer_key, self.consumer_secret, self.token, self.token_secret)
         count = nu.process_items_to_nuorder()
         return count

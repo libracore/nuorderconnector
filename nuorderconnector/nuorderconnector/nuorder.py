@@ -94,7 +94,6 @@ class nuOrder():
           "order_closing": item.order_closing,
           "pricing": prices
         }
-        frappe.msgprint("{0}".format(payload))
         #self.execute_put("/api/product/new/force", payload)
         frappe.log_error("{0}".format(payload))
         return
@@ -109,7 +108,8 @@ class nuOrder():
           "name": company.name,
           "code": hashlib.md5(name).hexdigest()
         }
-        self.execute_put("/api/company/new/force", payload)    
+        #self.execute_put("/api/company/new/force", payload) 
+        frappe.log_error("{0}".format(payload))   
         return
     
     """
@@ -197,7 +197,7 @@ class nuOrder():
             )  
         else:
             #skipped, no prices found
-            log("Price missng", "Item {0} is missing a price record and was not uploaded.".format(item_code), "Error")
+            log("Price missing", "Item {0} is missing a price record and was not uploaded.".format(item_code), "Error")
         return
         
     def get_single_items(self):
