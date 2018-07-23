@@ -351,3 +351,12 @@ def log(title, description="", status="Information"):
     new_log.insert()
     frappe.db.commit()
     return
+
+def test():
+    items = []
+    items.append({'item_code': 'Test1', 'qty': 1, 'rate': 15})
+    new_order = frappe.get_doc({"doctype": "Sales Order"})
+    new_order.customer = "Guest"
+    new_order.items = items
+    new_order.insert()
+    frappe.db.commit()
