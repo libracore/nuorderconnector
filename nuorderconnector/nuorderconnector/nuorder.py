@@ -8,6 +8,7 @@ import hashlib
 import frappe
 from datetime import datetime, timedelta
 from frappe import _
+from frappe.utils.background_jobs import enqueue
 
 class nuOrder():
     # static class variables
@@ -145,7 +146,7 @@ class nuOrder():
     
     def get_addresses(self, customer_name):
         addresses = []
-        adr_links = frappe.get_all("Dynamic Link", filters={'link_name': contact_name['name'], 'parenttype': 'Address'}, fields=['parent'])
+        adr_links = frappe.get_all("Dynamic Link", filters={'link_name': customer_name, 'parenttype': 'Address'}, fields=['parent'])
         if adr_links:
             for address in adr_links:
                 adr = frappe.get_doc("Address", address['parent'])
@@ -191,7 +192,9 @@ class nuOrder():
                             "customer": customer,
                             "items": items,
                             "delivery_date": (datetime.now() + timedelta(days=5)),
-                            "currency": currency
+                            "currency": currency,
+                            "customer_address": order['billing_address']['display_name'],
+                            "shipping_address_name": order['shipping_address']['display_name']
                         })
                         new_so.insert()
                         frappe.db.commit()

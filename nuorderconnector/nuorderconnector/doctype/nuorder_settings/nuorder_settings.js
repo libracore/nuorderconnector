@@ -46,7 +46,7 @@ function test(frm) {
 		method: 'test',
 		doc: frm.doc,
 		callback: function(r) {
-			console.log("Test done: " + r.message);
+			frappe.show_alert( __("Test done: ") + r.message);
 		}
 	});
 }
@@ -57,7 +57,7 @@ function get_orders(frm) {
         method: 'get_orders',
         doc: frm.doc,
         callback: function(r) {
-            console.log("Orders read: " + JSON.stringify(r.message));
+            frappe.show_alert( __("Orders read: ") + JSON.stringify(r.message));
         }
     });		
 }
@@ -68,7 +68,7 @@ function push_customers(frm) {
         method: 'push_customers',
         doc: frm.doc,
         callback: function(r) {
-            console.log("Customers written");
+            frappe.show_alert( __("Customers written"));
         }
     });		
 }
@@ -79,7 +79,7 @@ function push_items(frm) {
         method: 'push_items',
         doc: frm.doc,
         callback: function(r) {
-            console.log("Items written");
+            frappe.show_alert( __("Items written"));
         }
     });		
 }
@@ -89,7 +89,7 @@ function sync(frm) {
     frappe.call({
         method: 'nuorderconnector.nuorderconnector.nuorder.queue_sync',
         callback: function(r) {
-            frappe.msgprint(_("nuOrder queued for sync. Observe nuOrder log for details"))
+            frappe.msgprint( __("nuOrder queued for sync. Observe nuOrder log for details"));
         }
     });		
 }
