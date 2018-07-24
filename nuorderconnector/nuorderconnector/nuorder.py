@@ -136,8 +136,8 @@ class nuOrder():
         customer = frappe.get_doc("Customer", company)
         addresses = self.get_addresses(customer.name)
         payload = {
-          "name": company,
-          "code": hashlib.md5(company).hexdigest(),
+          "name": customer.name,
+          "code": hashlib.md5(customer.name.encode('utf-8')).hexdigest(),
           "currency_code": customer.default_currency or "CHF",
           "addresses": addresses
         }
