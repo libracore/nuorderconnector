@@ -145,7 +145,7 @@ class nuOrder():
         count = 0
         orders = []
         # get list of pending orders
-        order_ids = self.execute_get("/api/orders/{status}/list".format(status="pending"))
+        order_ids = self.execute_get("/api/orders/{status}/list".format(status="approved"))
         if order_ids:
             for order_id in order_ids:
                 # read order information
