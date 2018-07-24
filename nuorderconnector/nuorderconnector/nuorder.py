@@ -101,18 +101,21 @@ class nuOrder():
           "color": color,
           "name": item.item_name,
           "external_id": item.item_code,
-          "category": item.category,
+          "category": item.category or "",
           "brand_id": item.item_code,
           "sizes": sizes,
           "available_now": not item.disabled,
           "cancelled": False,
           "archived": item.disabled,
           "active": not item.disabled,
-          "description": item.description,
+          "description": item.description or "",
           "available_from": self.get_date_string(item.available_start),
           "available_until": self.get_date_string(item.available_end),
           "order_closing": self.get_date_string(item.order_closing),
-          "pricing": prices
+          "pricing": prices,
+          "department": item.department or "",
+          "division": item.division or "",
+          "brand name": item.brand or ""
         }
         self.execute_put("/api/product/new/force", payload)
         return
@@ -130,14 +133,31 @@ class nuOrder():
     """
     def update_company(self, company):
         customer = frappe.get_doc("Customer", company)
+        addresses = self.get_addresses(customer.name)
         payload = {
           "name": company,
           "code": hashlib.md5(company).hexdigest(),
-          "currency_code": customer.default_currency or "CHF"
+          "currency_code": customer.default_currency or "CHF",
+          "addresses": addresses
         }
         self.execute_put("/api/company/new/force", payload)   
         return
     
+    def get_addresses(self, customer_name):
+        addresses = []
+        adr_links = frappe.get_all("Dynamic Link", filters={'link_name': contact_name['name'], 'parenttype': 'Address'}, fields=['parent'])
+        if adr_links:
+            for address in adr_links:
+                adr = frappe.get_doc("Address", address['parent'])
+                addresses.append({
+                    "display_name": adr.name,
+                    "line_1": adr.address_line1,
+                    "city": adr.city,
+                    "zip": adr.pincode,
+                    "country": adr.country
+                })
+        return addresses
+
     """
     Pull orders from nuOrder into ERPNext
     """    

@@ -85,7 +85,7 @@ function push_items(frm) {
 }
 
 // sync
-function push_items(frm) {
+function sync(frm) {
     frappe.call({
         method: 'nuorderconnector.nuorderconnector.nuorder.queue_sync',
         callback: function(r) {
