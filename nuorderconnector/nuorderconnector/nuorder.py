@@ -6,7 +6,7 @@ import requests
 from requests_oauthlib import OAuth1
 import hashlib
 import frappe
-from datetime import datetime
+from datetime import datetime, timedelta
 from frappe import _
 
 class nuOrder():
@@ -16,14 +16,19 @@ class nuOrder():
     token = ""
     token_secret = ""
     host = "https://wholesale.sandbox1.nuorder.com"
+    verify_ssl = True
     
     # constructor
-    def __init__(self, host, consumer_key, consumer_secret, token, token_secret):
+    def __init__(self, host, consumer_key, consumer_secret, token, token_secret, verify_ssl=1):
         self.host = host
         self.consumer_key = consumer_key
         self.consumer_secret = consumer_secret
         self.token = token
         self.token_secret = token_secret
+        if verify_ssl == 1:
+            self.verify_ssl = True
+        else:
+            self.verify_ssl = False
         return
     
     # test function
@@ -44,7 +49,7 @@ class nuOrder():
         else:
             data = None
         url = self.host + endpoint
-        r = requests.get(url, auth=self.get_oauth(), data=data, headers=self.get_headers())
+        r = requests.get(url, auth=self.get_oauth(), data=data, headers=self.get_headers(), verify=self.verify_ssl)
         if r.status_code > 299:
             frappe.log_error("Get error {0} on {1}:\n{2}\n\n{3}".format(r.status_code, endpoint, payload, r.text))
             return None
@@ -55,16 +60,19 @@ class nuOrder():
     def execute_put(self, endpoint, payload=None):
         data = json.dumps(payload)
         url = self.host + endpoint
-        r = requests.put(url, auth=self.get_oauth(), data=data, headers=self.get_headers())
+        r = requests.put(url, auth=self.get_oauth(), data=data, headers=self.get_headers(), verify=self.verify_ssl)
         if r.status_code > 299:
             frappe.log_error("Put error {0} on {1}:\n{2}\n\n{3}".format(r.status_code, endpoint, payload, r.text))
         return r.json()
 
     # execute a post request
     def execute_post(self, endpoint, payload=None):
-        data = json.dumps(payload)
+        if payload:
+            data = json.dumps(payload)
+        else:
+            data=None
         url = self.host + endpoint
-        r = requests.post(url, auth=self.get_oauth(), data=data, headers=self.get_headers())
+        r = requests.post(url, auth=self.get_oauth(), data=data, headers=self.get_headers(), verify=self.verify_ssl)
         if r.status_code > 299:
             frappe.log_error("Post error {0} on {1}:\n{2}\n\n{3}".format(r.status_code, endpoint, payload, r.text))
         return r.json()
@@ -72,7 +80,7 @@ class nuOrder():
     # check the connection
     def check_connection(self):
         url = self.host + "/api/orders/{status}/list".format(status="pending")
-        r = requests.get(url, auth=self.get_oauth(), data=None, headers=self.get_headers())
+        r = requests.get(url, auth=self.get_oauth(), data=None, headers=self.get_headers(), verify=self.verify_ssl)
         if r.status_code == 200:
             return True
         else:
@@ -107,7 +115,6 @@ class nuOrder():
           "pricing": prices
         }
         self.execute_put("/api/product/new/force", payload)
-        #frappe.log_error("{0}".format(payload))
         return
     
     def get_date_string(self, date):
@@ -128,8 +135,7 @@ class nuOrder():
           "code": hashlib.md5(company).hexdigest(),
           "currency_code": customer.default_currency or "CHF"
         }
-        self.execute_put("/api/company/new/force", payload) 
-        #frappe.log_error("{0}".format(payload))   
+        self.execute_put("/api/company/new/force", payload)   
         return
     
     """
@@ -137,6 +143,7 @@ class nuOrder():
     """    
     def get_orders(self):
         count = 0
+        orders = []
         # get list of pending orders
         order_ids = self.execute_get("/api/orders/{status}/list".format(status="pending"))
         if order_ids:
@@ -147,6 +154,7 @@ class nuOrder():
                     count += 1
                     # create order in ERPNext
                     customer = order['retailer']['retailer_name']
+                    currency = order['currency_code']
                     items = []
                     for line_item in order['line_items']:
                         for size in line_item['sizes']:
@@ -158,18 +166,22 @@ class nuOrder():
                             except:
                                 frappe.log_error("nuOrder: Reading order failed: invalid data: {0}".format(size))
                     try:
-                        new_order = frappe.get_doc({"doctype": "Sales Order"})
-                        new_order.customer = customer
-                        new_order.items = items
-                        new_order.insert()
+                        new_so = frappe.get_doc({
+                            "doctype": "Sales Order",
+                            "customer": customer,
+                            "items": items,
+                            "delivery_date": (datetime.now() + timedelta(days=5)),
+                            "currency": currency
+                        })
+                        new_so.insert()
                         frappe.db.commit()
-                    
+                        orders.append(order_id)
                         # update status in nuOrder
                         self.execute_post("/api/order/{id}/{status}".format(id=order_id,status="processed"))
                     except Exception as e:
                         frappe.log_error("nuOrder: Insert order failed: {0} ({1})".format(order_id, e))
 
-        return count
+        return { 'count': count, 'orders': orders}
 
     # checks all items and pushes them to nuOrder
     def process_items_to_nuorder(self):
@@ -321,7 +333,7 @@ def queue_sync():
 
 def sync():
     config = frappe.get_single("nuOrder Settings")
-    nu = nuOrder(config.host, config.consumer_key, config.consumer_secret, config.token, config.token_secret)
+    nu = nuOrder(config.host, config.consumer_key, config.consumer_secret, config.token, config.token_secret, config.verify_ssl)
     
     # push customers
     customers = nu.get_customers()
@@ -353,10 +365,23 @@ def log(title, description="", status="Information"):
     return
 
 def test():
-    items = []
-    items.append({'item_code': 'Test1', 'qty': 1, 'rate': 15})
-    new_order = frappe.get_doc({"doctype": "Sales Order"})
-    new_order.customer = "Guest"
-    new_order.items = items
-    new_order.insert()
+    #items = []
+    #items.append({'item_code': 'Test1', 'qty': 1, 'rate': 15})
+    #new_order = frappe.get_doc({"doctype": "Sales Order"})
+    #new_order.customer = "Guest"
+    #new_order.items = items
+    #new_order.insert()
+    new_so = frappe.get_doc({
+        "doctype": "Sales Order",
+        "customer": "Guest",
+        "items": [
+            {
+                "item_code": "Test",
+                "qty": 1,
+                "rate": 15
+            }
+        ],
+        "delivery_date": (datetime.now() + timedelta(days=5))
+    })
+    new_so.insert()
     frappe.db.commit()

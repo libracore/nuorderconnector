@@ -4,9 +4,21 @@
 frappe.ui.form.on('nuOrder Settings', {
 	refresh: function(frm) {
 		// add test button
-        frm.add_custom_button(__("Test"), function() {
+        /*frm.add_custom_button(__("Test"), function() {
 			test(frm);
-		}).addClass("btn-error");
+		});*/
+        frm.add_custom_button(__("Get orders"), function() {
+			get_orders(frm);
+		}).addClass("btn-primary");
+        frm.add_custom_button(__("Push customers"), function() {
+			push_customers(frm);
+		});
+        frm.add_custom_button(__("Push items"), function() {
+			push_items(frm);
+		});
+        frm.add_custom_button(__("Sync"), function() {
+			sync(frm);
+		}).addClass("btn-primary");
 	},
 	validate: function(frm) {
 		frappe.call({
@@ -37,4 +49,47 @@ function test(frm) {
 			console.log("Test done: " + r.message);
 		}
 	});
+}
+
+// get orders
+function get_orders(frm) {
+    frappe.call({
+        method: 'get_orders',
+        doc: frm.doc,
+        callback: function(r) {
+            console.log("Orders read: " + JSON.stringify(r.message));
+        }
+    });		
+}
+
+// push customers
+function push_customers(frm) {
+    frappe.call({
+        method: 'push_customers',
+        doc: frm.doc,
+        callback: function(r) {
+            console.log("Customers written");
+        }
+    });		
+}
+
+// push items
+function push_items(frm) {
+    frappe.call({
+        method: 'push_items',
+        doc: frm.doc,
+        callback: function(r) {
+            console.log("Items written");
+        }
+    });		
+}
+
+// sync
+function push_items(frm) {
+    frappe.call({
+        method: 'nuorderconnector.nuorderconnector.nuorder.queue_sync',
+        callback: function(r) {
+            frappe.msgprint(_("nuOrder queued for sync. Observe nuOrder log for details"))
+        }
+    });		
 }
