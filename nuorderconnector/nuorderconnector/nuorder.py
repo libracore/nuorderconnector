@@ -192,7 +192,7 @@ class nuOrder():
             for item in items:
                 barcode = frappe.get_value('Item', item[0], 'barcode')
                 count += 1
-                self.update_erp_item(item_code=item[0], color='None', sizes=[{'size': '-', 'upc': barcode}])
+                self.update_erp_item(item_code=item[0], color='None', sizes=[{'size': 'onesize', 'upc': barcode}])
         # process variants
         templates = self.get_template_items()
         if templates:
