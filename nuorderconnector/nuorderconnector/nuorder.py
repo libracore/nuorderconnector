@@ -380,7 +380,7 @@ def log(title, description="", status="Information"):
     new_log.description = description
     new_log.status = status
     new_log.date = datetime.now()
-    new_log.insert()
+    new_log.insert(ignore_permissions=True)
     frappe.db.commit()
     return
 
